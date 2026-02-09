@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "403315250748",
+    "project_id": "enersave-643e3",
+    "storage_bucket": "enersave-643e3.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:403315250748:android:176d0230591d6221ef9539",
+        "android_client_info": {
+          "package_name": "com.thunderstormhan.enersave"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDNYC35D5_HTkBvGi4Cg5tfIgLQRa3Co4g"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
