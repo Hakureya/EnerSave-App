@@ -14,12 +14,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.thunderstormhan.enersave.viewmodel.AuditViewModel
 
 @Composable
-fun AuditTopBar(viewModel: AuditViewModel = viewModel()) {
-    // Mengamati perubahan daftar alat secara reaktif
-    val appliances by viewModel.activeAppliances.collectAsState()
-
-    // Total biaya akan otomatis terhitung setiap kali 'appliances' berubah
-    val totalDaily = viewModel.calculateTotalDailyCost()
+fun AuditTopBar(viewModel: AuditViewModel) {
+    // Ambil total biaya dari StateFlow
+    val totalCost by viewModel.totalDailyCost.collectAsState()
 
     Surface(shadowElevation = 4.dp, color = Color.White) {
         Row(
@@ -34,16 +31,16 @@ fun AuditTopBar(viewModel: AuditViewModel = viewModel()) {
                 Text("LIVE AUDIT MODE", color = Color(0xFF22C55E), fontSize = 9.sp, fontWeight = FontWeight.Bold)
             }
 
-            // Menampilkan Total Biaya
             Surface(
-                color = Color(0xFF2563EB), // blue-600
+                color = Color(0xFF2563EB),
                 shape = RoundedCornerShape(50)
             ) {
+                // Sekarang angka ini akan update otomatis saat slider digeser
                 Text(
-                    text = "Rp $totalDaily/hari",
+                    text = "Rp $totalCost/hari",
                     color = Color.White,
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                    fontSize = 10.sp,
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.Bold
                 )
             }

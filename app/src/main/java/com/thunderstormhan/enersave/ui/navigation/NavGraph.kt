@@ -1,14 +1,9 @@
 package com.thunderstormhan.enersave.ui.navigation
 
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Analytics
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -16,13 +11,20 @@ import com.thunderstormhan.enersave.ui.screens.auth.LoginScreen
 import com.thunderstormhan.enersave.ui.screens.auth.RegisterScreen
 import com.thunderstormhan.enersave.ui.screens.home.HomeScreen
 import com.thunderstormhan.enersave.ui.screens.audit.AuditScreen
-// Pastikan import ProfileScreen dan ShopScreen jika sudah dibuat
+import com.thunderstormhan.enersave.viewmodel.AuditViewModel
 
 @Composable
-fun NavGraph(navController: NavHostController, modifier: Modifier = Modifier) {
+fun NavGraph(
+    navController: NavHostController,
+    modifier: Modifier = Modifier
+) {
+    // 1. Inisialisasi ViewModel di sini agar tetap hidup selama NavHost ada (Shared ViewModel)
+    // Ini mencegah data Audit & Angka Biaya ter-reset saat pindah tab
+    val auditViewModel: AuditViewModel = viewModel()
+
     NavHost(
         navController = navController,
-        startDestination = "login",
+        startDestination = "login", // Mulai dari login
         modifier = modifier
     ) {
         // --- AUTH ROUTES ---
@@ -31,6 +33,7 @@ fun NavGraph(navController: NavHostController, modifier: Modifier = Modifier) {
                 onNavigateToRegister = { navController.navigate("register") },
                 onLoginSuccess = {
                     navController.navigate("home") {
+                        // Hapus stack login agar user tidak bisa kembali ke login setelah masuk
                         popUpTo("login") { inclusive = true }
                     }
                 }
@@ -48,29 +51,24 @@ fun NavGraph(navController: NavHostController, modifier: Modifier = Modifier) {
             )
         }
 
-        // --- MAIN ROUTES (Harus Sama dengan BottomNavItem.route) ---
+        // --- MAIN ROUTES (Harus sesuai dengan BottomNavItem.route) ---
         composable("home") {
             HomeScreen()
         }
 
         composable("audit") {
-            AuditScreen()
+            // 2. Kirimkan instance auditViewModel yang sama ke AuditScreen
+            AuditScreen(viewModel = auditViewModel)
         }
 
         composable("shop") {
-            // Jika belum buat filenya, gunakan Placeholder dulu agar tidak FC
-            Text("Halaman Toko (Shop)")
+            // Placeholder untuk halaman Toko
+            Text("Halaman Toko EnerSave - Tukar Poin di sini")
         }
 
         composable("profile") {
-            // Jika belum buat filenya, gunakan Placeholder dulu agar tidak FC
-            Text("Halaman Profil")
+            // Placeholder untuk halaman Profil
+            Text("Halaman Profil - Statistik Hemat Energi")
         }
     }
-}
-sealed class BottomNavItem(val route: String, val icon: ImageVector, val label: String) {
-    object Home : BottomNavItem("home", Icons.Default.Home, "Beranda")
-    object Audit : BottomNavItem("audit", Icons.Default.Analytics, "Audit")
-    object Shop : BottomNavItem("shop", Icons.Default.ShoppingCart, "Toko")
-    object Profile : BottomNavItem("profile", Icons.Default.Person, "Profil")
 }

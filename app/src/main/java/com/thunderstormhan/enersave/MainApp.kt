@@ -29,7 +29,7 @@ fun MainApp() {
     ) { innerPadding ->
         // NavGraph yang kita buat sebelumnya, masukkan padding agar tidak tertutup bar
         Box(modifier = Modifier.padding(innerPadding)) {
-            NavGraph(navController = navController)
+            NavGraph(navController = navController, modifier = Modifier.padding(innerPadding))
         }
     }
 }
