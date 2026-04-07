@@ -73,4 +73,6 @@ dependencies {
     // Permission for Internet
     implementation("androidx.compose.runtime:runtime-livedata:1.5.0")
 
+    implementation("io.github.sceneview:sceneview:2.2.1")
+
 }

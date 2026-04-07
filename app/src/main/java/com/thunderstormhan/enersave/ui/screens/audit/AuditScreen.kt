@@ -1,5 +1,6 @@
 package com.thunderstormhan.enersave.ui.screens.audit
 
+import androidx.compose.animation.*
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
@@ -11,7 +12,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.thunderstormhan.enersave.data.model.Appliance
@@ -19,68 +19,86 @@ import com.thunderstormhan.enersave.viewmodel.AuditViewModel
 
 @Composable
 fun AuditScreen(viewModel: AuditViewModel) {
+    // Holds whichever appliance the user tapped, to show the control sheet
     var selectedAppliance by remember { mutableStateOf<Appliance?>(null) }
+
     val activeList by viewModel.activeAppliances.collectAsState()
     val collection by viewModel.availableCollection.collectAsState()
 
     Scaffold(
-        topBar = {
-            AuditTopBar(viewModel = viewModel)
-        },
-        bottomBar = {
-            Surface(
-                shadowElevation = 8.dp,
-                color = Color.White,
-                shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
-            ) {
-                Column(modifier = Modifier.padding(16.dp).navigationBarsPadding()) {
-                    Text("KOLEKSI ALAT", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.Gray)
-                    Spacer(modifier = Modifier.height(12.dp))
+        topBar = { AuditTopBar(viewModel = viewModel) }
+    ) { padding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) {
 
+            // --- LAYER 1: 3D Canvas ---
+            RoomCanvas(
+                activeAppliances = activeList,
+                onApplianceClick = { selectedAppliance = it },
+                onApplianceDrag = { id, dx, dy -> viewModel.updateAppliancePosition(id, dx, dy) },
+                onDelete = { id -> viewModel.removeApplianceFromCanvas(id) }
+            )
+
+            // --- LAYER 2: Empty state hint ---
+            AnimatedVisibility(
+                visible = activeList.isEmpty(),
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .padding(bottom = 180.dp),
+                enter = fadeIn(),
+                exit = fadeOut()
+            ) {
+                Text(
+                    text = "Mulai simulasi dengan mengetuk alat di bawah",
+                    color = Color.Gray,
+                    fontSize = 13.sp
+                )
+            }
+
+            // --- LAYER 3: Appliance collection panel (floating bottom) ---
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(170.dp),
+                color = Color.White,
+                shadowElevation = 16.dp,
+                shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .padding(top = 16.dp)
+                        .navigationBarsPadding()
+                ) {
+                    Text(
+                        text = "KOLEKSI ALAT",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color.LightGray,
+                        modifier = Modifier.padding(horizontal = 24.dp)
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
                     LazyRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        contentPadding = PaddingValues(horizontal = 24.dp)
                     ) {
-                        items(collection) { item ->
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier.clickable { viewModel.addApplianceToCanvas(item) }
-                            ) {
-                                Surface(
-                                    modifier = Modifier.size(56.dp),
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = Color(0xFFF3F4F6)
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Text(getEmojiForIcon(item.iconName), fontSize = 24.sp)
-                                    }
-                                }
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(item.name, fontSize = 9.sp, fontWeight = FontWeight.Medium)
-                            }
+                        items(
+                            items = collection,
+                            key = { it.id } // Stable keys for LazyRow too
+                        ) { item ->
+                            ApplianceCollectionItem(
+                                item = item,
+                                onClick = { viewModel.addApplianceToCanvas(item) }
+                            )
                         }
                     }
                 }
             }
-        }
-    ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            RoomCanvas(
-                activeAppliances = activeList,
-                onApplianceClick = { selectedAppliance = it },
-                onApplianceDrag = { id, x, y -> viewModel.updateAppliancePosition(id, x, y) }
-            )
 
-            if (activeList.isEmpty()) {
-                Text(
-                    text = "Ketuk alat di bawah untuk\nmemulai simulasi audit",
-                    modifier = Modifier.align(Alignment.Center),
-                    textAlign = TextAlign.Center,
-                    color = Color.LightGray,
-                    fontSize = 14.sp
-                )
-            }
-
+            // --- LAYER 4: Appliance control sheet (topmost) ---
             selectedAppliance?.let { appliance ->
                 ApplianceControlSheet(
                     appliance = appliance,
@@ -92,5 +110,37 @@ fun AuditScreen(viewModel: AuditViewModel) {
                 )
             }
         }
+    }
+}
+
+// Extracted into its own composable to keep AuditScreen clean
+@Composable
+private fun ApplianceCollectionItem(
+    item: Appliance,
+    onClick: () -> Unit
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.clickable { onClick() }
+    ) {
+        Surface(
+            modifier = Modifier.size(56.dp),
+            shape = RoundedCornerShape(12.dp),
+            color = Color(0xFFF1F5F9)
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                // Emoji preview kept lightweight — 3D only renders on the canvas
+                Text(
+                    text = getEmojiForIcon(item.iconName),
+                    fontSize = 24.sp
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = item.name,
+            fontSize = 9.sp,
+            color = Color.DarkGray
+        )
     }
 }

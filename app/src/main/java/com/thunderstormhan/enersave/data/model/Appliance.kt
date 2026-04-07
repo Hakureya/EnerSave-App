@@ -9,7 +9,8 @@ data class Appliance(
     val isSwitchedOn: Boolean = true,
     // Tambahkan posisi awal (dalam DP atau Float)
     val positionX: Float = 0f,
-    val positionY: Float = 0f
+    val positionY: Float = 0f,
+    val modelPath: String = ""
 ) {
     // Menghitung estimasi biaya bulanan (Rp 1.500 per kWh)
     fun calculateMonthlyCost(): Long {
