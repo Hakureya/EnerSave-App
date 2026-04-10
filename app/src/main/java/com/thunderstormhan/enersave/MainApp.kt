@@ -17,7 +17,6 @@ fun MainApp() {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 
-    // Daftar layar yang tidak butuh Bottom Bar
     val authRoutes = listOf("login", "register")
 
     Scaffold(
@@ -27,9 +26,9 @@ fun MainApp() {
             }
         }
     ) { innerPadding ->
-        // NavGraph yang kita buat sebelumnya, masukkan padding agar tidak tertutup bar
+        // ✅ padding applied ONCE only — on the Box, not on NavGraph too
         Box(modifier = Modifier.padding(innerPadding)) {
-            NavGraph(navController = navController, modifier = Modifier.padding(innerPadding))
+            NavGraph(navController = navController)
         }
     }
 }

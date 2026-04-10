@@ -19,7 +19,6 @@ import com.thunderstormhan.enersave.viewmodel.AuditViewModel
 
 @Composable
 fun AuditScreen(viewModel: AuditViewModel) {
-    // Holds whichever appliance the user tapped, to show the control sheet
     var selectedAppliance by remember { mutableStateOf<Appliance?>(null) }
 
     val activeList by viewModel.activeAppliances.collectAsState()
@@ -71,7 +70,6 @@ fun AuditScreen(viewModel: AuditViewModel) {
                 Column(
                     modifier = Modifier
                         .padding(top = 16.dp)
-                        .navigationBarsPadding()
                 ) {
                     Text(
                         text = "KOLEKSI ALAT",
@@ -87,7 +85,7 @@ fun AuditScreen(viewModel: AuditViewModel) {
                     ) {
                         items(
                             items = collection,
-                            key = { it.id } // Stable keys for LazyRow too
+                            key = { it.id }
                         ) { item ->
                             ApplianceCollectionItem(
                                 item = item,
@@ -113,7 +111,6 @@ fun AuditScreen(viewModel: AuditViewModel) {
     }
 }
 
-// Extracted into its own composable to keep AuditScreen clean
 @Composable
 private fun ApplianceCollectionItem(
     item: Appliance,
@@ -129,7 +126,6 @@ private fun ApplianceCollectionItem(
             color = Color(0xFFF1F5F9)
         ) {
             Box(contentAlignment = Alignment.Center) {
-                // Emoji preview kept lightweight — 3D only renders on the canvas
                 Text(
                     text = getEmojiForIcon(item.iconName),
                     fontSize = 24.sp
