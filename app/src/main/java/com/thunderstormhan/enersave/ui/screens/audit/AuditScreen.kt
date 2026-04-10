@@ -20,9 +20,16 @@ import com.thunderstormhan.enersave.viewmodel.AuditViewModel
 @Composable
 fun AuditScreen(viewModel: AuditViewModel) {
     var selectedAppliance by remember { mutableStateOf<Appliance?>(null) }
+    var roomConfig        by remember { mutableStateOf<RoomConfig?>(null) }
 
     val activeList by viewModel.activeAppliances.collectAsState()
     val collection by viewModel.availableCollection.collectAsState()
+
+    // Show room setup dialog until user confirms
+    if (roomConfig == null) {
+        RoomSetupDialog(onConfirm = { roomConfig = it })
+        return
+    }
 
     Scaffold(
         topBar = { AuditTopBar(viewModel = viewModel) }
@@ -33,31 +40,38 @@ fun AuditScreen(viewModel: AuditViewModel) {
                 .padding(padding)
         ) {
 
-            // --- LAYER 1: 3D Canvas ---
-            RoomCanvas(
-                activeAppliances = activeList,
-                onApplianceClick = { selectedAppliance = it },
-                onApplianceDrag = { id, dx, dy -> viewModel.updateAppliancePosition(id, dx, dy) },
-                onDelete = { id -> viewModel.removeApplianceFromCanvas(id) }
-            )
+            // --- LAYER 1: Isometric Room Canvas ---
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(bottom = 170.dp)
+            ) {
+                IsometricRoomCanvas(
+                    roomConfig         = roomConfig!!,
+                    activeAppliances   = activeList,
+                    onApplianceClick   = { selectedAppliance = it },
+                    onApplianceDrag    = { id, dx, dy -> viewModel.updateAppliancePosition(id, dx, dy) },
+                    onDelete           = { id -> viewModel.removeApplianceFromCanvas(id) }
+                )
+            }
 
             // --- LAYER 2: Empty state hint ---
             AnimatedVisibility(
                 visible = activeList.isEmpty(),
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .padding(bottom = 180.dp),
+                    .padding(bottom = 200.dp),
                 enter = fadeIn(),
                 exit = fadeOut()
             ) {
                 Text(
-                    text = "Mulai simulasi dengan mengetuk alat di bawah",
+                    text = "Ketuk alat di bawah untuk menambahkan ke ruangan",
                     color = Color.Gray,
                     fontSize = 13.sp
                 )
             }
 
-            // --- LAYER 3: Appliance collection panel (floating bottom) ---
+            // --- LAYER 3: Appliance collection panel ---
             Surface(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -67,10 +81,7 @@ fun AuditScreen(viewModel: AuditViewModel) {
                 shadowElevation = 16.dp,
                 shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
             ) {
-                Column(
-                    modifier = Modifier
-                        .padding(top = 16.dp)
-                ) {
+                Column(modifier = Modifier.padding(top = 16.dp)) {
                     Text(
                         text = "KOLEKSI ALAT",
                         fontSize = 10.sp,
@@ -83,12 +94,9 @@ fun AuditScreen(viewModel: AuditViewModel) {
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                         contentPadding = PaddingValues(horizontal = 24.dp)
                     ) {
-                        items(
-                            items = collection,
-                            key = { it.id }
-                        ) { item ->
+                        items(items = collection, key = { it.id }) { item ->
                             ApplianceCollectionItem(
-                                item = item,
+                                item    = item,
                                 onClick = { viewModel.addApplianceToCanvas(item) }
                             )
                         }
@@ -96,7 +104,7 @@ fun AuditScreen(viewModel: AuditViewModel) {
                 }
             }
 
-            // --- LAYER 4: Appliance control sheet (topmost) ---
+            // --- LAYER 4: Control sheet ---
             selectedAppliance?.let { appliance ->
                 ApplianceControlSheet(
                     appliance = appliance,
@@ -112,10 +120,7 @@ fun AuditScreen(viewModel: AuditViewModel) {
 }
 
 @Composable
-private fun ApplianceCollectionItem(
-    item: Appliance,
-    onClick: () -> Unit
-) {
+private fun ApplianceCollectionItem(item: Appliance, onClick: () -> Unit) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.clickable { onClick() }
@@ -126,17 +131,10 @@ private fun ApplianceCollectionItem(
             color = Color(0xFFF1F5F9)
         ) {
             Box(contentAlignment = Alignment.Center) {
-                Text(
-                    text = getEmojiForIcon(item.iconName),
-                    fontSize = 24.sp
-                )
+                Text(text = getEmojiForIcon(item.iconName), fontSize = 24.sp)
             }
         }
         Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = item.name,
-            fontSize = 9.sp,
-            color = Color.DarkGray
-        )
+        Text(text = item.name, fontSize = 9.sp, color = Color.DarkGray)
     }
 }
