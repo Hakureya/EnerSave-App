@@ -24,28 +24,25 @@ class AuditViewModel(
     val totalDailyCost: StateFlow<Long> = _totalDailyCost.asStateFlow()
 
     private val _availableCollection = MutableStateFlow(listOf(
-        // iconName now stores "folder/filename.glb" to match your assets structure exactly
-        Appliance("id_ac",           "AC 1 PK",       800, 0f, "AC/air_conditioner",     true, 100f, 100f),
-        Appliance("id_kipas",        "Kipas Angin",    45,  0f, "fan/fan",                true, 150f, 150f),
-        Appliance("id_pc",           "PC Gaming",      450, 0f, "computer/computer",      true, 200f, 200f),
-        Appliance("id_lampu",        "Lampu Meja",     15,  0f, "light/light_bulb",       true, 250f, 250f),
-        Appliance("id_kulkas",       "Kulkas",         120, 0f, "fridge/fridge",          true, 300f, 300f),
-        Appliance("id_blender",      "Blender",        300, 0f, "blender/blender",        true, 350f, 100f),
-        Appliance("id_ceiling_fan",  "Kipas Plafon",   50,  0f, "ceiling_fan/ceiling_fan",true, 400f, 150f),
-        Appliance("id_hair_dryer",   "Hair Dryer",     1200,0f, "hair_dryer/hair_dryer",  true, 450f, 200f),
-        Appliance("id_iron",         "Setrika",        1000,0f, "iron/iron",              true, 500f, 250f),
-        Appliance("id_printer",      "Printer",        50,  0f, "printer/printer",        true, 550f, 300f)
+        Appliance("id_ac",            "AC 1 PK",        800,  0f, "AC/air_conditioner",      true, 100f, 100f),
+        Appliance("id_kipas",         "Kipas Angin",     45,  0f, "fan/fan",                 true, 150f, 150f),
+        Appliance("id_pc",            "PC Gaming",       450, 0f, "computer/computer",       true, 200f, 200f),
+        Appliance("id_lampu",         "Lampu Meja",      15,  0f, "light/light_bulb",        true, 250f, 250f),
+        Appliance("id_kulkas",        "Kulkas",          120, 0f, "fridge/fridge",           true, 300f, 300f),
+        Appliance("id_blender",       "Blender",         300, 0f, "blender/blender",         true, 350f, 100f),
+        Appliance("id_ceiling_fan",   "Kipas Plafon",    50,  0f, "ceiling_fan/ceiling_fan", true, 400f, 150f),
+        Appliance("id_hair_dryer",    "Hair Dryer",      1200,0f, "hair_dryer/hair_dryer",   true, 450f, 200f),
+        Appliance("id_iron",          "Setrika",         1000,0f, "iron/iron",               true, 500f, 250f),
+        Appliance("id_printer",       "Printer",         50,  0f, "printer/printer",         true, 550f, 300f)
     ))
     val availableCollection = _availableCollection.asStateFlow()
 
-    init {
-        loadAppliancesFromFirestore()
-    }
+    init { loadAppliancesFromFirestore() }
 
     fun addApplianceToCanvas(appliance: Appliance) {
-        val newAppliance = appliance.copy(id = java.util.UUID.randomUUID().toString())
-        _activeAppliances.value = _activeAppliances.value + newAppliance
-        saveToFirestore(newAppliance)
+        val new = appliance.copy(id = java.util.UUID.randomUUID().toString())
+        _activeAppliances.value = _activeAppliances.value + new
+        saveToFirestore(new)
     }
 
     fun removeApplianceFromCanvas(id: String) {
@@ -55,29 +52,30 @@ class AuditViewModel(
     }
 
     fun updateAppliancePosition(id: String, dragAmountX: Float, dragAmountY: Float) {
-        val currentList = _activeAppliances.value.toMutableList()
-        val index = currentList.indexOfFirst { it.id == id }
-        if (index != -1) {
-            val updated = currentList[index].copy(
-                positionX = currentList[index].positionX + dragAmountX,
-                positionY = currentList[index].positionY + dragAmountY
-            )
-            currentList[index] = updated
-            _activeAppliances.value = currentList
-            saveToFirestore(updated)
+        _activeAppliances.value = _activeAppliances.value.map {
+            if (it.id == id) it.copy(
+                positionX = it.positionX + dragAmountX,
+                positionY = it.positionY + dragAmountY
+            ) else it
+        }.also { list ->
+            list.find { it.id == id }?.let { saveToFirestore(it) }
         }
     }
 
     fun updateApplianceUsage(id: String, newHours: Float) {
-        val currentList = _activeAppliances.value.toMutableList()
-        val index = currentList.indexOfFirst { it.id == id }
-        if (index != -1) {
-            val updated = currentList[index].copy(hourUsage = newHours)
-            currentList[index] = updated
-            _activeAppliances.value = currentList
-            refreshTotalCost()
-            saveToFirestore(updated)
+        _activeAppliances.value = _activeAppliances.value.map {
+            if (it.id == id) it.copy(hourUsage = newHours) else it
         }
+        refreshTotalCost()
+        _activeAppliances.value.find { it.id == id }?.let { saveToFirestore(it) }
+    }
+
+    // Rotate by 45° each call, wraps at 360°
+    fun rotateAppliance(id: String) {
+        _activeAppliances.value = _activeAppliances.value.map {
+            if (it.id == id) it.copy(rotationY = (it.rotationY + 45f) % 360f) else it
+        }
+        _activeAppliances.value.find { it.id == id }?.let { saveToFirestore(it) }
     }
 
     fun calculateTotalDailyCost(): Long {
@@ -89,8 +87,8 @@ class AuditViewModel(
 
     fun refreshTotalCost() {
         val tarifPerKwh = 1500
-        _totalDailyCost.value = _activeAppliances.value.sumOf { appliance ->
-            ((appliance.watt * appliance.hourUsage) / 1000 * tarifPerKwh).toLong()
+        _totalDailyCost.value = _activeAppliances.value.sumOf {
+            ((it.watt * it.hourUsage) / 1000 * tarifPerKwh).toLong()
         }
     }
 
@@ -122,8 +120,7 @@ class AuditViewModel(
             try {
                 val snapshot = db.collection("users").document(userId)
                     .collection("user_appliances").get().await()
-                val list = snapshot.toObjects(Appliance::class.java)
-                _activeAppliances.value = list
+                _activeAppliances.value = snapshot.toObjects(Appliance::class.java)
                 refreshTotalCost()
             } catch (e: Exception) {
                 _activeAppliances.value = emptyList()

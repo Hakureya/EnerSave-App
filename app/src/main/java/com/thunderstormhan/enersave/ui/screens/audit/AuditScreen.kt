@@ -19,13 +19,21 @@ import com.thunderstormhan.enersave.viewmodel.AuditViewModel
 
 @Composable
 fun AuditScreen(viewModel: AuditViewModel) {
-    var selectedAppliance by remember { mutableStateOf<Appliance?>(null) }
-    var roomConfig        by remember { mutableStateOf<RoomConfig?>(null) }
+    // Action sheet: tapping a model opens this
+    var actionAppliance  by remember { mutableStateOf<Appliance?>(null) }
+    // Control sheet: edit hourUsage (existing ApplianceControlSheet)
+    var controlAppliance by remember { mutableStateOf<Appliance?>(null) }
+    // Room setup
+    var roomConfig       by remember { mutableStateOf<RoomConfig?>(null) }
 
     val activeList by viewModel.activeAppliances.collectAsState()
     val collection by viewModel.availableCollection.collectAsState()
 
-    // Show room setup dialog until user confirms
+    // Keep action sheet appliance in sync with live list (rotation updates reflected instantly)
+    val liveActionAppliance = actionAppliance?.let { a ->
+        activeList.find { it.id == a.id }
+    }
+
     if (roomConfig == null) {
         RoomSetupDialog(onConfirm = { roomConfig = it })
         return
@@ -47,25 +55,28 @@ fun AuditScreen(viewModel: AuditViewModel) {
                     .padding(bottom = 170.dp)
             ) {
                 IsometricRoomCanvas(
-                    roomConfig         = roomConfig!!,
-                    activeAppliances   = activeList,
-                    onApplianceClick   = { selectedAppliance = it },
-                    onApplianceDrag    = { id, dx, dy -> viewModel.updateAppliancePosition(id, dx, dy) },
-                    onDelete           = { id -> viewModel.removeApplianceFromCanvas(id) }
+                    roomConfig       = roomConfig!!,
+                    activeAppliances = activeList,
+                    onApplianceClick = { appliance ->
+                        // Sync from live list so sheet always shows latest state
+                        actionAppliance = activeList.find { it.id == appliance.id } ?: appliance
+                    },
+                    onApplianceDrag  = { id, dx, dy -> viewModel.updateAppliancePosition(id, dx, dy) },
+                    onDelete         = { id -> viewModel.removeApplianceFromCanvas(id) }
                 )
             }
 
-            // --- LAYER 2: Empty state hint ---
+            // --- LAYER 2: Empty state ---
             AnimatedVisibility(
                 visible = activeList.isEmpty(),
                 modifier = Modifier
                     .align(Alignment.Center)
                     .padding(bottom = 200.dp),
                 enter = fadeIn(),
-                exit = fadeOut()
+                exit  = fadeOut()
             ) {
                 Text(
-                    text = "Ketuk alat di bawah untuk menambahkan ke ruangan",
+                    text  = "Ketuk alat di bawah untuk menambahkan ke ruangan",
                     color = Color.Gray,
                     fontSize = 13.sp
                 )
@@ -77,22 +88,22 @@ fun AuditScreen(viewModel: AuditViewModel) {
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
                     .height(170.dp),
-                color = Color.White,
+                color          = Color.White,
                 shadowElevation = 16.dp,
-                shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
+                shape          = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
             ) {
                 Column(modifier = Modifier.padding(top = 16.dp)) {
                     Text(
-                        text = "KOLEKSI ALAT",
+                        text     = "KOLEKSI ALAT",
                         fontSize = 10.sp,
                         fontWeight = FontWeight.ExtraBold,
-                        color = Color.LightGray,
+                        color    = Color.LightGray,
                         modifier = Modifier.padding(horizontal = 24.dp)
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        contentPadding = PaddingValues(horizontal = 24.dp)
+                        contentPadding        = PaddingValues(horizontal = 24.dp)
                     ) {
                         items(items = collection, key = { it.id }) { item ->
                             ApplianceCollectionItem(
@@ -104,15 +115,33 @@ fun AuditScreen(viewModel: AuditViewModel) {
                 }
             }
 
-            // --- LAYER 4: Control sheet ---
-            selectedAppliance?.let { appliance ->
+            // --- LAYER 4: Action sheet (tap on model) ---
+            liveActionAppliance?.let { appliance ->
+                ApplianceActionSheet(
+                    appliance   = appliance,
+                    onOk        = { actionAppliance = null },
+                    onRotate    = { viewModel.rotateAppliance(appliance.id) },
+                    onRemove    = {
+                        viewModel.removeApplianceFromCanvas(appliance.id)
+                        actionAppliance = null
+                    },
+                    onEditHours = {
+                        controlAppliance = appliance
+                        actionAppliance  = null
+                    },
+                    onDismiss   = { actionAppliance = null }
+                )
+            }
+
+            // --- LAYER 5: Hour usage editor (existing sheet) ---
+            controlAppliance?.let { appliance ->
                 ApplianceControlSheet(
                     appliance = appliance,
-                    onSave = { newHours ->
+                    onSave    = { newHours ->
                         viewModel.updateApplianceUsage(appliance.id, newHours)
-                        selectedAppliance = null
+                        controlAppliance = null
                     },
-                    onDismiss = { selectedAppliance = null }
+                    onDismiss = { controlAppliance = null }
                 )
             }
         }
@@ -127,8 +156,8 @@ private fun ApplianceCollectionItem(item: Appliance, onClick: () -> Unit) {
     ) {
         Surface(
             modifier = Modifier.size(56.dp),
-            shape = RoundedCornerShape(12.dp),
-            color = Color(0xFFF1F5F9)
+            shape    = RoundedCornerShape(12.dp),
+            color    = Color(0xFFF1F5F9)
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Text(text = getEmojiForIcon(item.iconName), fontSize = 24.sp)
