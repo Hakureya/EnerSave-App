@@ -250,18 +250,18 @@ fun IsometricRoomCanvas(
         // ── WALL MODE CHIPS ───────────────────────────────────────────────
         Row(
             modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = 8.dp, end = 12.dp),
+                .align(Alignment.BottomStart)
+                .padding(bottom = 24.dp, start = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            if (walls.isNotEmpty()) {
-                SmallChip("Hapus Dinding", Color(0xFFEF4444)) { walls = walls.dropLast(1) }
-            }
             SmallChip(
                 label = if (wallModeOn) "✏️ Mode Dinding" else "➕ Dinding",
                 color = if (wallModeOn) Color(0xFF4F8EF7) else Color(0xFF6B7280)
             ) { wallModeOn = !wallModeOn }
+            if (walls.isNotEmpty()) {
+                SmallChip("Hapus Dinding", Color(0xFFEF4444)) { walls = walls.dropLast(1) }
+            }
         }
 
         // ── TRASH ─────────────────────────────────────────────────────────
