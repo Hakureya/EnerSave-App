@@ -21,6 +21,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.*
 import com.thunderstormhan.enersave.data.model.Room
 import kotlin.math.*
+import kotlinx.coroutines.launch
 
 // Scale: 1 meter = 56dp per tile on main canvas
 private const val TILE_W_DP = 56f
@@ -49,21 +50,30 @@ fun MainRoomCanvas(
     val wallHPx  = tileHPx * WALL_RATIO
     val snapPx   = with(density) { SNAP_DP.dp.toPx() }
 
-    // Position (top of isometric diamond) per room in px
-    val positions = remember { mutableStateMapOf<String, Offset>() }
-
-    // Initialize position for newly placed rooms
     val placedRooms = rooms.filter { placements.contains(it.id) }
-    placedRooms.forEach { room ->
-        if (!positions.containsKey(room.id)) {
-            val index = placedRooms.indexOf(room)
-            // Stagger initial positions so they don't overlap
-            positions[room.id] = Offset(
-                x = tileWPx * 1f + index * (room.widthMeters * tileWPx * 0.6f),
-                y = wallHPx + tileHPx * 1f
-            )
+
+    // Seed initial positions synchronously so nothing is empty on first frame
+    val initialPositions = remember(savedPositions, placements) {
+        val map = mutableMapOf<String, Offset>()
+        placedRooms.forEachIndexed { index, room ->
+            val saved = savedPositions[room.id]
+            map[room.id] = if (saved != null) {
+                Offset(saved.first, saved.second)
+            } else {
+                Offset(
+                    x = tileWPx * 3f + index * (room.widthMeters * tileWPx * 0.6f),
+                    y = wallHPx * 2f + index * (room.widthMeters * tileHPx * 0.3f)
+                )
+            }
         }
+        map
     }
+
+    // Mutable positions for smooth dragging — initialized from savedPositions
+    val positions = remember(savedPositions, placements) {
+        mutableStateMapOf<String, Offset>().also { it.putAll(initialPositions) }
+    }
+
     // Clean up removed rooms
     positions.keys.toList().forEach { id ->
         if (!placements.contains(id)) positions.remove(id)
