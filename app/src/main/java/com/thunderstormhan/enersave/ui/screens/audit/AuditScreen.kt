@@ -1,10 +1,14 @@
 package com.thunderstormhan.enersave.ui.screens.audit
 
 import androidx.compose.animation.*
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -15,12 +19,15 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.thunderstormhan.enersave.data.model.Appliance
 import com.thunderstormhan.enersave.data.model.Room
 import com.thunderstormhan.enersave.viewmodel.AuditViewModel
+import kotlin.math.roundToInt
 
 @Composable
 fun AuditScreen(viewModel: AuditViewModel) {
@@ -30,10 +37,14 @@ fun AuditScreen(viewModel: AuditViewModel) {
 
     val rooms         by viewModel.rooms.collectAsState()
     val currentRoomId by viewModel.currentRoomId.collectAsState()
+    val isMainRoom    by viewModel.isMainRoom.collectAsState()
     val activeList    by viewModel.activeAppliancesFlow.collectAsState()
     val collection    by viewModel.availableCollection.collectAsState()
 
     val currentRoom = rooms.find { it.id == currentRoomId }
+
+    val placedRoomIds by viewModel.placedRoomIds.collectAsState()
+    val mainRoomPositions by viewModel.mainRoomPositions.collectAsState()
 
     // Keep action sheet in sync with live list
     val liveActionAppliance = actionAppliance?.let { a ->
@@ -60,34 +71,47 @@ fun AuditScreen(viewModel: AuditViewModel) {
                 .padding(padding)
         ) {
 
-            // --- LAYER 1: Isometric Room Canvas ---
-            currentRoom?.let { room ->
-                val roomConfig = RoomConfig(room.name, room.widthMeters, room.heightMeters)
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(bottom = 170.dp)
-                ) {
-                    IsometricRoomCanvas(
-                        roomConfig       = roomConfig,
-                        activeAppliances = activeList,
-                        onApplianceClick = { appliance ->
-                            actionAppliance = activeList.find { it.id == appliance.id } ?: appliance
-                        },
-                        onApplianceDrag  = { id, dx, dy -> viewModel.updateAppliancePosition(id, dx, dy) },
-                        onDelete         = { id -> viewModel.removeApplianceFromCanvas(id) }
+            // --- LAYER 1: Canvas ---
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(bottom = 170.dp)
+            ) {
+                if (isMainRoom) {
+                    MainRoomCanvas(
+                        rooms         = rooms,
+                        placements    = placedRoomIds,
+                        savedPositions = mainRoomPositions,
+                        onPositionChanged = { roomId, x, y ->
+                            viewModel.updateMainRoomPosition(roomId, x, y)
+                        }
                     )
+                } else {
+                    currentRoom?.let { room ->
+                        val roomConfig = RoomConfig(room.name, room.widthMeters, room.heightMeters)
+                        IsometricRoomCanvas(
+                            roomConfig       = roomConfig,
+                            activeAppliances = activeList,
+                            onApplianceClick = { appliance ->
+                                actionAppliance = activeList.find { it.id == appliance.id } ?: appliance
+                            },
+                            onApplianceDrag  = { id, dx, dy -> viewModel.updateAppliancePosition(id, dx, dy) },
+                            onDelete         = { id -> viewModel.removeApplianceFromCanvas(id) }
+                        )
+                    }
                 }
             }
 
             // --- LAYER 2: Room selector dropdown (top of canvas) ---
             RoomSelectorBar(
-                rooms         = rooms,
-                currentRoom   = currentRoom,
-                onSelectRoom  = { viewModel.switchRoom(it.id) },
-                onAddRoom     = { showAddRoom = true },
-                onDeleteRoom  = { viewModel.deleteRoom(it.id) },
-                modifier      = Modifier
+                rooms             = rooms,
+                currentRoom       = currentRoom,
+                isMainRoom        = isMainRoom,
+                onSelectMainRoom  = { viewModel.switchToMainRoom() },
+                onSelectRoom      = { viewModel.switchRoom(it.id) },
+                onAddRoom         = { showAddRoom = true },
+                onDeleteRoom      = { viewModel.deleteRoom(it.id) },
+                modifier          = Modifier
                     .align(Alignment.TopCenter)
                     .padding(top = 8.dp, start = 12.dp, end = 12.dp)
             )
@@ -106,31 +130,64 @@ fun AuditScreen(viewModel: AuditViewModel) {
                 )
             }
 
-            // --- LAYER 4: Appliance collection panel ---
+            // --- LAYER 4: Bottom panel (rooms panel in main room, appliances otherwise) ---
             Surface(
                 modifier        = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(170.dp),
                 color           = Color.White,
                 shadowElevation = 16.dp,
                 shape           = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
             ) {
-                Column(modifier = Modifier.padding(top = 16.dp)) {
-                    Text(
-                        text       = "KOLEKSI ALAT",
-                        fontSize   = 10.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color      = Color.LightGray,
-                        modifier   = Modifier.padding(horizontal = 24.dp)
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        contentPadding        = PaddingValues(horizontal = 24.dp)
-                    ) {
-                        items(items = collection, key = { it.id }) { item ->
-                            ApplianceCollectionItem(
-                                item    = item,
-                                onClick = { viewModel.addApplianceToCanvas(item) }
-                            )
+                if (isMainRoom) {
+                    Column(modifier = Modifier.padding(top = 16.dp)) {
+                        Text(
+                            text       = "RUANGAN",
+                            fontSize   = 10.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color      = Color.LightGray,
+                            modifier   = Modifier.padding(horizontal = 24.dp)
+                        )
+                        Text(
+                            text     = "Ketuk untuk menambah atau melepas ruangan",
+                            fontSize = 9.sp,
+                            color    = Color.LightGray,
+                            modifier = Modifier.padding(horizontal = 24.dp, vertical = 2.dp)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            contentPadding        = PaddingValues(horizontal = 24.dp)
+                        ) {
+                            items(items = rooms, key = { it.id }) { room ->
+                                val isPlaced = placedRoomIds.contains(room.id)
+                                RoomChip(
+                                    room     = room,
+                                    isPlaced = isPlaced,
+                                    onClick  = { viewModel.toggleRoomOnMainCanvas(room.id) }
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    // Appliance panel
+                    Column(modifier = Modifier.padding(top = 16.dp)) {
+                        Text(
+                            text       = "KOLEKSI ALAT",
+                            fontSize   = 10.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color      = Color.LightGray,
+                            modifier   = Modifier.padding(horizontal = 24.dp)
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                            contentPadding        = PaddingValues(horizontal = 24.dp)
+                        ) {
+                            items(items = collection, key = { it.id }) { item ->
+                                ApplianceCollectionItem(
+                                    item    = item,
+                                    onClick = { viewModel.addApplianceToCanvas(item) }
+                                )
+                            }
                         }
                     }
                 }
@@ -174,6 +231,8 @@ fun AuditScreen(viewModel: AuditViewModel) {
 private fun RoomSelectorBar(
     rooms: List<Room>,
     currentRoom: Room?,
+    isMainRoom: Boolean,
+    onSelectMainRoom: () -> Unit,
     onSelectRoom: (Room) -> Unit,
     onAddRoom: () -> Unit,
     onDeleteRoom: (Room) -> Unit,
@@ -181,35 +240,47 @@ private fun RoomSelectorBar(
 ) {
     var expanded by remember { mutableStateOf(false) }
 
+    // Display label for the trigger button
+    val displayName = when {
+        isMainRoom   -> "Rumah Utama"
+        currentRoom != null -> currentRoom.name
+        else         -> "Pilih Ruangan"
+    }
+    val displaySub = when {
+        isMainRoom   -> "${rooms.size} ruangan terhubung"
+        currentRoom != null -> "${currentRoom.widthMeters}m × ${currentRoom.heightMeters}m"
+        else         -> ""
+    }
+
     Box(modifier = modifier) {
         // Trigger button
         Surface(
-            onClick      = { expanded = true },
-            shape        = RoundedCornerShape(12.dp),
-            color        = Color.White,
+            onClick         = { expanded = true },
+            shape           = RoundedCornerShape(12.dp),
+            color           = Color.White,
             shadowElevation = 4.dp,
-            modifier     = Modifier.fillMaxWidth()
+            modifier        = Modifier.fillMaxWidth()
         ) {
             Row(
-                modifier            = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                verticalAlignment   = Alignment.CenterVertically,
+                modifier              = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalAlignment     = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("🏠", fontSize = 16.sp, modifier = Modifier.padding(end = 8.dp))
+                    Text(
+                        if (isMainRoom) "🏘️" else "🏠",
+                        fontSize = 16.sp,
+                        modifier = Modifier.padding(end = 8.dp)
+                    )
                     Column {
                         Text(
-                            text       = currentRoom?.name ?: "Pilih Ruangan",
+                            text       = displayName,
                             fontSize   = 14.sp,
                             fontWeight = FontWeight.Bold,
                             color      = Color(0xFF1A1A2E)
                         )
-                        currentRoom?.let {
-                            Text(
-                                text     = "${it.widthMeters}m × ${it.heightMeters}m",
-                                fontSize = 11.sp,
-                                color    = Color.Gray
-                            )
+                        if (displaySub.isNotEmpty()) {
+                            Text(text = displaySub, fontSize = 11.sp, color = Color.Gray)
                         }
                     }
                 }
@@ -223,11 +294,38 @@ private fun RoomSelectorBar(
 
         // Dropdown menu
         DropdownMenu(
-            expanded        = expanded,
+            expanded         = expanded,
             onDismissRequest = { expanded = false },
-            modifier        = Modifier.fillMaxWidth(0.9f)
+            modifier         = Modifier.fillMaxWidth(0.9f)
         ) {
-            // Existing rooms
+            // Main room option (always first)
+            DropdownMenuItem(
+                text = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("🏘️", fontSize = 16.sp, modifier = Modifier.padding(end = 8.dp))
+                        Column {
+                            Text(
+                                text       = "Rumah Utama",
+                                fontWeight = if (isMainRoom) FontWeight.Bold else FontWeight.Normal,
+                                color      = if (isMainRoom) Color(0xFF4F8EF7) else Color(0xFF1A1A2E)
+                            )
+                            Text(
+                                text     = "Semua ruangan terhubung",
+                                fontSize = 11.sp,
+                                color    = Color.Gray
+                            )
+                        }
+                    }
+                },
+                onClick = {
+                    expanded = false
+                    onSelectMainRoom()
+                }
+            )
+
+            Divider()
+
+            // Individual rooms
             rooms.forEach { room ->
                 DropdownMenuItem(
                     text = {
@@ -297,6 +395,44 @@ private fun RoomSelectorBar(
                     expanded = false
                     onAddRoom()
                 }
+            )
+        }
+    }
+}
+
+@Composable
+private fun RoomChip(room: com.thunderstormhan.enersave.data.model.Room, isPlaced: Boolean, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape   = RoundedCornerShape(14.dp),
+        color   = if (isPlaced) Color(0xFF4F8EF7).copy(alpha = 0.12f) else Color(0xFFF1F5F9),
+        border  = androidx.compose.foundation.BorderStroke(
+            1.5.dp,
+            if (isPlaced) Color(0xFF4F8EF7) else Color.Transparent
+        )
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier            = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+        ) {
+            Text("🏠", fontSize = 26.sp)
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text       = room.name,
+                fontSize   = 10.sp,
+                fontWeight = FontWeight.Medium,
+                color      = if (isPlaced) Color(0xFF4F8EF7) else Color.DarkGray
+            )
+            Text(
+                text     = "${room.widthMeters}×${room.heightMeters}m",
+                fontSize = 8.sp,
+                color    = Color.Gray
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text     = if (isPlaced) "✓ Ditambahkan" else "+ Tambahkan",
+                fontSize = 8.sp,
+                color    = if (isPlaced) Color(0xFF4F8EF7) else Color.Gray
             )
         }
     }

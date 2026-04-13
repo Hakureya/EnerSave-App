@@ -19,6 +19,18 @@ class AuditViewModel(
     private val db = FirebaseFirestore.getInstance()
 
     // ── Rooms ─────────────────────────────────────────────────────────────────
+    // null currentRoomId = main room view
+    private val _isMainRoom = MutableStateFlow(false)
+    val isMainRoom: StateFlow<Boolean> = _isMainRoom.asStateFlow()
+
+    // Which rooms are placed on the main canvas
+    private val _placedRoomIds = MutableStateFlow<Set<String>>(emptySet())
+    val placedRoomIds: StateFlow<Set<String>> = _placedRoomIds.asStateFlow()
+
+    // Positions of rooms on the main canvas (roomId -> x,y in px)
+    private val _mainRoomPositions = MutableStateFlow<Map<String, Pair<Float,Float>>>(emptyMap())
+    val mainRoomPositions: StateFlow<Map<String, Pair<Float,Float>>> = _mainRoomPositions.asStateFlow()
+
     private val _rooms = MutableStateFlow<List<Room>>(emptyList())
     val rooms: StateFlow<List<Room>> = _rooms.asStateFlow()
 
@@ -73,7 +85,28 @@ class AuditViewModel(
         saveRoomToFirestore(room)
     }
 
+    fun switchToMainRoom() {
+        _isMainRoom.value = true
+    }
+
+    fun toggleRoomOnMainCanvas(roomId: String) {
+        val placed = _placedRoomIds.value.toMutableSet()
+        if (placed.contains(roomId)) {
+            placed.remove(roomId)
+            // Also remove its position
+            _mainRoomPositions.value = _mainRoomPositions.value - roomId
+        } else {
+            placed.add(roomId)
+        }
+        _placedRoomIds.value = placed
+    }
+
+    fun updateMainRoomPosition(roomId: String, x: Float, y: Float) {
+        _mainRoomPositions.value = _mainRoomPositions.value + (roomId to Pair(x, y))
+    }
+
     fun switchRoom(roomId: String) {
+        _isMainRoom.value = false
         _currentRoomId.value = roomId
         syncCurrentRoomAppliances()
         refreshTotalCost()
