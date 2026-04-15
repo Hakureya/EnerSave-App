@@ -287,11 +287,32 @@ fun ApplianceModelView(
     engine: com.google.android.filament.Engine,
     modelLoader: ModelLoader
 ) {
-    val glbPath = "models/${appliance.iconName}.glb"
+    // --- LOGIKA DINAMIS PATH MODEL ---
+    // Jika activeModel kosong atau "default", gunakan path standar.
+    // Jika tidak, gunakan nama model baru (misal: "computer_2")
+    val glbPath = remember(appliance.iconName, appliance.activeModel) {
+        val folder = appliance.iconName.substringBefore("/")
+        if (appliance.activeModel.isEmpty() || appliance.activeModel == "default") {
+            "models/${appliance.iconName}.glb"
+        } else {
+
+            val cleanFileName = appliance.activeModel.replace(".glb", "")
+
+            // Jika iconName adalah "computer/computer", folder-nya adalah "computer"
+            // Maka path-nya: "models/computer/computer_2.glb"
+            "models/$folder/$cleanFileName.glb"
+        }
+    }
+
     val config  = getModelConfig(appliance.iconName)
     val modelInstance = remember(glbPath) {
-        modelLoader.createModelInstance(assetFileLocation = glbPath)
+        try {
+            modelLoader.createModelInstance(assetFileLocation = glbPath)
+        } catch (e: Exception) {
+            null // Fallback jika file tidak ditemukan
+        }
     }
+
     val isActive = appliance.hourUsage > 0
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -300,9 +321,8 @@ fun ApplianceModelView(
                 Text(getEmojiForIcon(appliance.iconName), fontSize = 32.sp)
             }
         } else {
-            // key(rotationY) forces node recreation when rotation changes
-            // because rememberNodes is memoized and won't update otherwise
-            key(appliance.rotationY) {
+            // Gunakan key(glbPath) agar Sceneview mereload model saat skin diganti
+            key(appliance.rotationY, glbPath) {
                 Scene(
                     modifier    = Modifier.fillMaxSize(),
                     engine      = engine,
@@ -322,7 +342,7 @@ fun ApplianceModelView(
             }
         }
 
-        // Power dot
+        // ... (Power dot dan Label nama tetap sama seperti kode Anda)
         Surface(
             modifier = Modifier.size(9.dp).align(Alignment.TopEnd),
             shape    = CircleShape,
@@ -330,7 +350,6 @@ fun ApplianceModelView(
             border   = androidx.compose.foundation.BorderStroke(1.dp, Color.White)
         ) {}
 
-        // Name label
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)

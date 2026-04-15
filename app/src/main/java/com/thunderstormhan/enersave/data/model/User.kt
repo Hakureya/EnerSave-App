@@ -7,5 +7,6 @@ data class User(
     val monthlyBill: Long = 0,
     val points: Int = 0,
     val co2Saved: Double = 0.0,
-    val avatarUrl: String = ""
+    val avatarUrl: String = "",
+    val ownedSkins: List<String> = listOf("default")
 )

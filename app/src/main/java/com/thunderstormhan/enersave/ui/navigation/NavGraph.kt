@@ -12,8 +12,14 @@ import com.thunderstormhan.enersave.ui.screens.auth.RegisterScreen
 import com.thunderstormhan.enersave.ui.screens.home.HomeScreen
 import com.thunderstormhan.enersave.ui.screens.audit.AuditScreen
 import com.thunderstormhan.enersave.ui.screens.profile.ProfileScreen // Impor UI Profil
+import com.thunderstormhan.enersave.ui.screens.shop.ShopScreen
 import com.thunderstormhan.enersave.viewmodel.AuditViewModel
 import com.thunderstormhan.enersave.viewmodel.ProfileViewModel // Impor ViewModel Profil
+
+import com.thunderstormhan.enersave.ui.screens.shop.ShopScreen
+import com.thunderstormhan.enersave.viewmodel.ShopViewModel
+
+
 
 @Composable
 fun NavGraph(
@@ -23,6 +29,7 @@ fun NavGraph(
     // 1. Inisialisasi ViewModel di sini agar tetap hidup selama NavHost ada (Shared ViewModel)
     // Ini mencegah data Audit & Angka Biaya ter-reset saat pindah tab
     val auditViewModel: AuditViewModel = viewModel()
+    val shopViewModel: ShopViewModel = viewModel()
 
     NavHost(
         navController = navController,
@@ -60,12 +67,12 @@ fun NavGraph(
 
         composable("audit") {
             // 2. Kirimkan instance auditViewModel yang sama ke AuditScreen
-            AuditScreen(viewModel = auditViewModel)
+            AuditScreen(viewModel = auditViewModel, shopViewModel = shopViewModel)
         }
 
         composable("shop") {
             // Placeholder untuk halaman Toko
-            Text("Halaman Toko EnerSave - Tukar Poin di sini")
+            ShopScreen(viewModel = shopViewModel)
         }
 
         composable("profile") {

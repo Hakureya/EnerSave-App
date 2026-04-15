@@ -6,12 +6,9 @@ import android.net.NetworkCapabilities
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -22,36 +19,42 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.thunderstormhan.enersave.data.model.Appliance
 import com.thunderstormhan.enersave.data.model.Room
 import com.thunderstormhan.enersave.viewmodel.AuditViewModel
-import kotlin.math.roundToInt
+import com.thunderstormhan.enersave.viewmodel.ShopViewModel
 
 @Composable
-fun AuditScreen(viewModel: AuditViewModel) {
+fun AuditScreen(viewModel: AuditViewModel, shopViewModel: ShopViewModel) {
+    // State untuk mengontrol sheet mana yang muncul
     var actionAppliance  by remember { mutableStateOf<Appliance?>(null) }
     var controlAppliance by remember { mutableStateOf<Appliance?>(null) }
     var showAddRoom      by remember { mutableStateOf(false) }
 
-    val rooms         by viewModel.rooms.collectAsState()
-    val currentRoomId by viewModel.currentRoomId.collectAsState()
-    val isMainRoom    by viewModel.isMainRoom.collectAsState()
-    val activeList    by viewModel.activeAppliancesFlow.collectAsState()
-    val collection    by viewModel.availableCollection.collectAsState()
+    val userState by shopViewModel.user.collectAsState()
 
-    val currentRoom = rooms.find { it.id == currentRoomId }
-
+    // Observasi State dari ViewModel
+    val rooms             by viewModel.rooms.collectAsState()
+    val currentRoomId     by viewModel.currentRoomId.collectAsState()
+    val isMainRoom        by viewModel.isMainRoom.collectAsState()
+    val activeList        by viewModel.activeAppliancesFlow.collectAsState()
+    val collection        by viewModel.availableCollection.collectAsState()
     val placedRoomIds     by viewModel.placedRoomIds.collectAsState()
     val mainRoomPositions by viewModel.mainRoomPositions.collectAsState()
     val isLoading         by viewModel.isLoading.collectAsState()
 
+    // Data simulasi skin yang sudah dibeli dari toko
+    // (Dalam aplikasi nyata, ini diambil dari UserState/ViewModel)
+    val ownedSkins = userState.ownedSkins
+
+    val currentRoom = rooms.find { it.id == currentRoomId }
     val context = LocalContext.current
+
+    // Cek koneksi internet
     val isOnline by remember {
         derivedStateOf {
             val cm   = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
@@ -60,12 +63,12 @@ fun AuditScreen(viewModel: AuditViewModel) {
         }
     }
 
-    // Keep action sheet in sync with live list
+    // Pastikan Action Sheet sinkron dengan data alat terbaru (misal setelah ganti skin)
     val liveActionAppliance = actionAppliance?.let { a ->
         activeList.find { it.id == a.id }
     }
 
-    // Wait for Firestore load before deciding whether to show dialog
+    // 1. Loading State
     if (isLoading) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -77,7 +80,7 @@ fun AuditScreen(viewModel: AuditViewModel) {
         return
     }
 
-    // Show setup dialog only after load is done and rooms are truly empty
+    // 2. Setup Awal (Jika belum ada ruangan)
     if (rooms.isEmpty() || showAddRoom) {
         RoomSetupDialog(
             onConfirm = { config ->
@@ -97,41 +100,30 @@ fun AuditScreen(viewModel: AuditViewModel) {
                 .padding(padding)
         ) {
 
-            // --- CONNECTIVITY BANNER ---
+            // --- KONEKSI INTERNET BANNER ---
             if (!isOnline) {
                 Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .align(Alignment.TopCenter),
+                    modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter),
                     color = Color(0xFFEF4444)
                 ) {
-                    Row(
-                        modifier              = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-                        verticalAlignment     = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Text("⚠️", fontSize = 12.sp)
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text       = "Tidak ada koneksi internet. Perubahan tidak akan tersimpan.",
-                            fontSize   = 11.sp,
-                            color      = Color.White,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
+                    Text(
+                        text = "⚠️ Mode Offline - Perubahan mungkin tidak tersinkron.",
+                        fontSize = 11.sp, color = Color.White, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        modifier = Modifier.padding(vertical = 4.dp)
+                    )
                 }
             }
 
-            // --- LAYER 1: Canvas ---
+            // --- LAYER 1: Canvas (Isometric / Main) ---
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(bottom = 170.dp)
+                    .padding(bottom = 170.dp) // Beri ruang untuk panel bawah
             ) {
                 if (isMainRoom) {
                     MainRoomCanvas(
-                        rooms         = rooms,
-                        placements    = placedRoomIds,
+                        rooms          = rooms,
+                        placements     = placedRoomIds,
                         savedPositions = mainRoomPositions,
                         onPositionChanged = { roomId, x, y ->
                             viewModel.updateMainRoomPosition(roomId, x, y)
@@ -153,7 +145,7 @@ fun AuditScreen(viewModel: AuditViewModel) {
                 }
             }
 
-            // --- LAYER 2: Room selector dropdown (top of canvas) ---
+            // --- LAYER 2: Dropdown Pemilih Ruangan ---
             RoomSelectorBar(
                 rooms             = rooms,
                 currentRoom       = currentRoom,
@@ -164,78 +156,50 @@ fun AuditScreen(viewModel: AuditViewModel) {
                 onDeleteRoom      = { viewModel.deleteRoom(it.id) },
                 modifier          = Modifier
                     .align(Alignment.TopCenter)
-                    .padding(top = 8.dp, start = 12.dp, end = 12.dp)
+                    .padding(top = 24.dp, start = 12.dp, end = 12.dp)
             )
 
-            // --- LAYER 3: Empty state ---
+            // --- LAYER 3: Hint jika ruangan kosong ---
             AnimatedVisibility(
-                visible  = activeList.isEmpty(),
+                visible  = activeList.isEmpty() && !isMainRoom,
                 modifier = Modifier.align(Alignment.Center).padding(bottom = 200.dp),
-                enter    = fadeIn(),
-                exit     = fadeOut()
+                enter = fadeIn(), exit = fadeOut()
             ) {
-                Text(
-                    text     = "Ketuk alat di bawah untuk menambahkan ke ruangan",
-                    color    = Color.Gray,
-                    fontSize = 13.sp
-                )
+                Text("Ketuk alat di bawah untuk menambah ke ruangan", color = Color.Gray, fontSize = 13.sp)
             }
 
-            // --- LAYER 4: Bottom panel (rooms panel in main room, appliances otherwise) ---
+            // --- LAYER 4: Panel Bawah (Koleksi Alat / List Ruangan) ---
             Surface(
-                modifier        = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(170.dp),
-                color           = Color.White,
+                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(170.dp),
+                color = Color.White,
                 shadowElevation = 16.dp,
-                shape           = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
+                shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
             ) {
-                if (isMainRoom) {
-                    Column(modifier = Modifier.padding(top = 16.dp)) {
-                        Text(
-                            text       = "RUANGAN",
-                            fontSize   = 10.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color      = Color.LightGray,
-                            modifier   = Modifier.padding(horizontal = 24.dp)
-                        )
-                        Text(
-                            text     = "Ketuk untuk menambah atau melepas ruangan",
-                            fontSize = 9.sp,
-                            color    = Color.LightGray,
-                            modifier = Modifier.padding(horizontal = 24.dp, vertical = 2.dp)
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            contentPadding        = PaddingValues(horizontal = 24.dp)
-                        ) {
+                Column(modifier = Modifier.padding(top = 16.dp)) {
+                    val label = if (isMainRoom) "DAFTAR RUANGAN" else "KOLEKSI ALAT"
+                    Text(
+                        text = label,
+                        fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, color = Color.LightGray,
+                        modifier = Modifier.padding(horizontal = 24.dp)
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        contentPadding = PaddingValues(horizontal = 24.dp)
+                    ) {
+                        if (isMainRoom) {
                             items(items = rooms, key = { it.id }) { room ->
-                                val isPlaced = placedRoomIds.contains(room.id)
                                 RoomChip(
-                                    room     = room,
-                                    isPlaced = isPlaced,
-                                    onClick  = { viewModel.toggleRoomOnMainCanvas(room.id) }
+                                    room = room,
+                                    isPlaced = placedRoomIds.contains(room.id),
+                                    onClick = { viewModel.toggleRoomOnMainCanvas(room.id) }
                                 )
                             }
-                        }
-                    }
-                } else {
-                    // Appliance panel
-                    Column(modifier = Modifier.padding(top = 16.dp)) {
-                        Text(
-                            text       = "KOLEKSI ALAT",
-                            fontSize   = 10.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color      = Color.LightGray,
-                            modifier   = Modifier.padding(horizontal = 24.dp)
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(16.dp),
-                            contentPadding        = PaddingValues(horizontal = 24.dp)
-                        ) {
+                        } else {
                             items(items = collection, key = { it.id }) { item ->
                                 ApplianceCollectionItem(
-                                    item    = item,
+                                    item = item,
                                     onClick = { viewModel.addApplianceToCanvas(item) }
                                 )
                             }
@@ -244,25 +208,29 @@ fun AuditScreen(viewModel: AuditViewModel) {
                 }
             }
 
-            // --- LAYER 5: Action sheet ---
+            // --- LAYER 5: Action Sheet (Ganti Skin & Rotasi) ---
             liveActionAppliance?.let { appliance ->
                 ApplianceActionSheet(
-                    appliance   = appliance,
-                    onOk        = { actionAppliance = null },
-                    onRotate    = { viewModel.rotateAppliance(appliance.id) },
-                    onRemove    = {
+                    appliance    = appliance,
+                    ownedSkins   = ownedSkins, // Mengirim daftar skin yang dibeli
+                    onOk         = { actionAppliance = null },
+                    onRotate     = { viewModel.rotateAppliance(appliance.id) },
+                    onRemove     = {
                         viewModel.removeApplianceFromCanvas(appliance.id)
                         actionAppliance = null
                     },
-                    onEditHours = {
+                    onEditHours  = {
                         controlAppliance = appliance
                         actionAppliance  = null
                     },
-                    onDismiss   = { actionAppliance = null }
+                    onUpdateSkin = { newModel ->
+                        viewModel.updateApplianceSkin(appliance.id, newModel)
+                    },
+                    onDismiss    = { actionAppliance = null }
                 )
             }
 
-            // --- LAYER 6: Hour usage editor ---
+            // --- LAYER 6: Kontrol Jam Penggunaan ---
             controlAppliance?.let { appliance ->
                 ApplianceControlSheet(
                     appliance = appliance,
@@ -277,214 +245,23 @@ fun AuditScreen(viewModel: AuditViewModel) {
     }
 }
 
-// ── Room selector dropdown bar ────────────────────────────────────────────────
-@Composable
-private fun RoomSelectorBar(
-    rooms: List<Room>,
-    currentRoom: Room?,
-    isMainRoom: Boolean,
-    onSelectMainRoom: () -> Unit,
-    onSelectRoom: (Room) -> Unit,
-    onAddRoom: () -> Unit,
-    onDeleteRoom: (Room) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    var expanded by remember { mutableStateOf(false) }
-
-    // Display label for the trigger button
-    val displayName = when {
-        isMainRoom   -> "Rumah Utama"
-        currentRoom != null -> currentRoom.name
-        else         -> "Pilih Ruangan"
-    }
-    val displaySub = when {
-        isMainRoom   -> "${rooms.size} ruangan terhubung"
-        currentRoom != null -> "${currentRoom.widthMeters}m × ${currentRoom.heightMeters}m"
-        else         -> ""
-    }
-
-    Box(modifier = modifier) {
-        // Trigger button
-        Surface(
-            onClick         = { expanded = true },
-            shape           = RoundedCornerShape(12.dp),
-            color           = Color.White,
-            shadowElevation = 4.dp,
-            modifier        = Modifier.fillMaxWidth()
-        ) {
-            Row(
-                modifier              = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                verticalAlignment     = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        if (isMainRoom) "🏘️" else "🏠",
-                        fontSize = 16.sp,
-                        modifier = Modifier.padding(end = 8.dp)
-                    )
-                    Column {
-                        Text(
-                            text       = displayName,
-                            fontSize   = 14.sp,
-                            fontWeight = FontWeight.Bold,
-                            color      = Color(0xFF1A1A2E)
-                        )
-                        if (displaySub.isNotEmpty()) {
-                            Text(text = displaySub, fontSize = 11.sp, color = Color.Gray)
-                        }
-                    }
-                }
-                Icon(
-                    imageVector        = Icons.Default.ArrowDropDown,
-                    contentDescription = "Pilih ruangan",
-                    tint               = Color.Gray
-                )
-            }
-        }
-
-        // Dropdown menu
-        DropdownMenu(
-            expanded         = expanded,
-            onDismissRequest = { expanded = false },
-            modifier         = Modifier.fillMaxWidth(0.9f)
-        ) {
-            // Main room option (always first)
-            DropdownMenuItem(
-                text = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("🏘️", fontSize = 16.sp, modifier = Modifier.padding(end = 8.dp))
-                        Column {
-                            Text(
-                                text       = "Rumah Utama",
-                                fontWeight = if (isMainRoom) FontWeight.Bold else FontWeight.Normal,
-                                color      = if (isMainRoom) Color(0xFF4F8EF7) else Color(0xFF1A1A2E)
-                            )
-                            Text(
-                                text     = "Semua ruangan terhubung",
-                                fontSize = 11.sp,
-                                color    = Color.Gray
-                            )
-                        }
-                    }
-                },
-                onClick = {
-                    expanded = false
-                    onSelectMainRoom()
-                }
-            )
-
-            Divider()
-
-            // Individual rooms
-            rooms.forEach { room ->
-                DropdownMenuItem(
-                    text = {
-                        Row(
-                            verticalAlignment    = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            modifier             = Modifier.fillMaxWidth()
-                        ) {
-                            Column {
-                                Text(
-                                    text       = room.name,
-                                    fontWeight = if (room.id == currentRoom?.id) FontWeight.Bold else FontWeight.Normal,
-                                    color      = if (room.id == currentRoom?.id) Color(0xFF4F8EF7) else Color(0xFF1A1A2E)
-                                )
-                                Text(
-                                    text     = "${room.widthMeters}m × ${room.heightMeters}m  •  ${room.appliances.size} alat",
-                                    fontSize = 11.sp,
-                                    color    = Color.Gray
-                                )
-                            }
-                            // Delete button (only if more than 1 room)
-                            if (rooms.size > 1) {
-                                IconButton(
-                                    onClick = {
-                                        expanded = false
-                                        onDeleteRoom(room)
-                                    },
-                                    modifier = Modifier.size(32.dp)
-                                ) {
-                                    Icon(
-                                        imageVector        = Icons.Default.Delete,
-                                        contentDescription = "Hapus ruangan",
-                                        tint               = Color(0xFFEF4444),
-                                        modifier           = Modifier.size(16.dp)
-                                    )
-                                }
-                            }
-                        }
-                    },
-                    onClick = {
-                        expanded = false
-                        onSelectRoom(room)
-                    }
-                )
-            }
-
-            Divider()
-
-            // Add new room button
-            DropdownMenuItem(
-                text = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector        = Icons.Default.Add,
-                            contentDescription = "Tambah ruangan",
-                            tint               = Color(0xFF4F8EF7),
-                            modifier           = Modifier.padding(end = 8.dp)
-                        )
-                        Text(
-                            text  = "Tambah Ruangan Baru",
-                            color = Color(0xFF4F8EF7),
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                },
-                onClick = {
-                    expanded = false
-                    onAddRoom()
-                }
-            )
-        }
-    }
-}
+// ── Komponen UI Kecil ─────────────────────────────────────────────────────────
 
 @Composable
-private fun RoomChip(room: com.thunderstormhan.enersave.data.model.Room, isPlaced: Boolean, onClick: () -> Unit) {
+private fun RoomChip(room: Room, isPlaced: Boolean, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
-        shape   = RoundedCornerShape(14.dp),
-        color   = if (isPlaced) Color(0xFF4F8EF7).copy(alpha = 0.12f) else Color(0xFFF1F5F9),
-        border  = androidx.compose.foundation.BorderStroke(
-            1.5.dp,
-            if (isPlaced) Color(0xFF4F8EF7) else Color.Transparent
-        )
+        shape = RoundedCornerShape(14.dp),
+        color = if (isPlaced) Color(0xFF4F8EF7).copy(alpha = 0.12f) else Color(0xFFF1F5F9),
+        border = androidx.compose.foundation.BorderStroke(1.dp, if (isPlaced) Color(0xFF4F8EF7) else Color.Transparent)
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            modifier            = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
-            Text("🏠", fontSize = 26.sp)
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text       = room.name,
-                fontSize   = 10.sp,
-                fontWeight = FontWeight.Medium,
-                color      = if (isPlaced) Color(0xFF4F8EF7) else Color.DarkGray
-            )
-            Text(
-                text     = "${room.widthMeters}×${room.heightMeters}m",
-                fontSize = 8.sp,
-                color    = Color.Gray
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text     = if (isPlaced) "✓ Ditambahkan" else "+ Tambahkan",
-                fontSize = 8.sp,
-                color    = if (isPlaced) Color(0xFF4F8EF7) else Color.Gray
-            )
+            Text("🏠", fontSize = 24.sp)
+            Text(room.name, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            Text(if (isPlaced) "Terpasang" else "Gunakan", fontSize = 9.sp, color = Color.Gray)
         }
     }
 }
@@ -493,18 +270,58 @@ private fun RoomChip(room: com.thunderstormhan.enersave.data.model.Room, isPlace
 private fun ApplianceCollectionItem(item: Appliance, onClick: () -> Unit) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier            = Modifier.clickable { onClick() }
+        modifier = Modifier.clickable { onClick() }
     ) {
-        Surface(
-            modifier = Modifier.size(56.dp),
-            shape    = RoundedCornerShape(12.dp),
-            color    = Color(0xFFF1F5F9)
-        ) {
+        Surface(modifier = Modifier.size(60.dp), shape = RoundedCornerShape(16.dp), color = Color(0xFFF1F5F9)) {
             Box(contentAlignment = Alignment.Center) {
-                Text(text = getEmojiForIcon(item.iconName), fontSize = 24.sp)
+                Text(getEmojiForIcon(item.iconName), fontSize = 28.sp)
             }
         }
         Spacer(modifier = Modifier.height(4.dp))
-        Text(text = item.name, fontSize = 9.sp, color = Color.DarkGray)
+        Text(item.name, fontSize = 10.sp, color = Color.DarkGray, fontWeight = FontWeight.Medium)
+    }
+}
+
+@Composable
+private fun RoomSelectorBar(
+    rooms: List<Room>, currentRoom: Room?, isMainRoom: Boolean,
+    onSelectMainRoom: () -> Unit, onSelectRoom: (Room) -> Unit,
+    onAddRoom: () -> Unit, onDeleteRoom: (Room) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val label = if (isMainRoom) "🏘️ Rumah Utama" else "🏠 ${currentRoom?.name}"
+
+    Box(modifier = modifier) {
+        Surface(
+            onClick = { expanded = true },
+            shape = RoundedCornerShape(12.dp), color = Color.White, shadowElevation = 4.dp
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(16.dp, 12.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(label, fontWeight = FontWeight.ExtraBold, fontSize = 14.sp)
+                Icon(Icons.Default.ArrowDropDown, null)
+            }
+        }
+
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }, modifier = Modifier.fillMaxWidth(0.9f)) {
+            DropdownMenuItem(text = { Text("🏘️ Rumah Utama") }, onClick = { onSelectMainRoom(); expanded = false })
+            Divider()
+            rooms.forEach { room ->
+                DropdownMenuItem(
+                    text = {
+                        Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween) {
+                            Text(room.name)
+                            Icon(Icons.Default.Delete, null, tint = Color.Red, modifier = Modifier.size(18.dp).clickable { onDeleteRoom(room) })
+                        }
+                    },
+                    onClick = { onSelectRoom(room); expanded = false }
+                )
+            }
+            Divider()
+            DropdownMenuItem(text = { Text("➕ Tambah Ruangan", color = Color(0xFF4F8EF7)) }, onClick = { onAddRoom(); expanded = false })
+        }
     }
 }

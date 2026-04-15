@@ -10,7 +10,9 @@ data class Appliance(
     val positionX: Float = 0f,
     val positionY: Float = 0f,
     val modelPath: String = "",
-    val rotationY: Float = 0f  // rotation in degrees, snaps to 0/45/90/135/180/225/270/315
+    val rotationY: Float = 0f, // rotation in degrees, snaps to 0/45/90/135/180/225/270/315
+    val activeModel: String = "default",
+    val type: String = "other"
 ) {
     fun calculateMonthlyCost(): Long {
         return ((watt * hourUsage * 30) / 1000 * 1500).toLong()
