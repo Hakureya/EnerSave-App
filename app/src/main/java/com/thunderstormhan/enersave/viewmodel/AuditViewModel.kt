@@ -47,6 +47,16 @@ class AuditViewModel(
     private val _totalDailyCost = MutableStateFlow(0L)
     val totalDailyCost: StateFlow<Long> = _totalDailyCost.asStateFlow()
 
+    private val _isSaving = MutableStateFlow(false)
+    val isSaving: StateFlow<Boolean> = _isSaving.asStateFlow()
+
+    private val _saveSuccess = MutableStateFlow(false)
+    val saveSuccess: StateFlow<Boolean> = _saveSuccess.asStateFlow()
+
+    // True while initial Firestore load is in progress
+    private val _isLoading = MutableStateFlow(true)
+    val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
+
     // ── Available appliance collection (shared across rooms) ──────────────────
     private val _availableCollection = MutableStateFlow(listOf(
         Appliance("id_ac",           "AC 1 PK",       800,  0f, "AC/air_conditioner",      true, 100f, 100f),
@@ -82,7 +92,7 @@ class AuditViewModel(
         _rooms.value = _rooms.value + room
         _currentRoomId.value = room.id
         syncCurrentRoomAppliances()
-        saveRoomToFirestore(room)
+        // saved on explicit Save
     }
 
     fun switchToMainRoom() {
@@ -93,16 +103,17 @@ class AuditViewModel(
         val placed = _placedRoomIds.value.toMutableSet()
         if (placed.contains(roomId)) {
             placed.remove(roomId)
-            // Also remove its position
             _mainRoomPositions.value = _mainRoomPositions.value - roomId
         } else {
             placed.add(roomId)
         }
         _placedRoomIds.value = placed
+        // saved on explicit Save
     }
 
     fun updateMainRoomPosition(roomId: String, x: Float, y: Float) {
         _mainRoomPositions.value = _mainRoomPositions.value + (roomId to Pair(x, y))
+        // saved on explicit Save
     }
 
     fun switchRoom(roomId: String) {
@@ -127,14 +138,14 @@ class AuditViewModel(
         val roomId = _currentRoomId.value ?: return
         val new = appliance.copy(id = java.util.UUID.randomUUID().toString())
         updateRoomAppliances(roomId) { it + new }
-        saveRoomToFirestore(currentRoom ?: return)
+        // saved on explicit Save
     }
 
     fun removeApplianceFromCanvas(id: String) {
         val roomId = _currentRoomId.value ?: return
         updateRoomAppliances(roomId) { list -> list.filter { it.id != id } }
         refreshTotalCost()
-        saveRoomToFirestore(currentRoom ?: return)
+        // positions saved on explicit Save button tap
     }
 
     fun updateAppliancePosition(id: String, dragAmountX: Float, dragAmountY: Float) {
@@ -145,7 +156,7 @@ class AuditViewModel(
                 positionY = it.positionY + dragAmountY
             ) else it }
         }
-        saveRoomToFirestore(currentRoom ?: return)
+        // saved on explicit Save
     }
 
     fun updateApplianceUsage(id: String, newHours: Float) {
@@ -154,7 +165,7 @@ class AuditViewModel(
             list.map { if (it.id == id) it.copy(hourUsage = newHours) else it }
         }
         refreshTotalCost()
-        saveRoomToFirestore(currentRoom ?: return)
+        // saved on explicit Save
     }
 
     fun rotateAppliance(id: String) {
@@ -162,7 +173,63 @@ class AuditViewModel(
         updateRoomAppliances(roomId) { list ->
             list.map { if (it.id == id) it.copy(rotationY = (it.rotationY + 45f) % 360f) else it }
         }
-        saveRoomToFirestore(currentRoom ?: return)
+        // saved on explicit Save
+    }
+
+    // Save everything at once when user taps Save
+    fun saveAll() {
+        val userId = authRepository.currentUser?.uid ?: return
+        viewModelScope.launch {
+            _isSaving.value = true
+            _saveSuccess.value = false
+            try {
+                // Save all rooms
+                _rooms.value.forEach { room ->
+                    val data = mapOf(
+                        "id"           to room.id,
+                        "name"         to room.name,
+                        "widthMeters"  to room.widthMeters,
+                        "heightMeters" to room.heightMeters,
+                        "appliances"   to room.appliances.map { a ->
+                            mapOf(
+                                "id"           to a.id,
+                                "name"         to a.name,
+                                "watt"         to a.watt,
+                                "hourUsage"    to a.hourUsage,
+                                "iconName"     to a.iconName,
+                                "isSwitchedOn" to a.isSwitchedOn,
+                                "positionX"    to a.positionX,
+                                "positionY"    to a.positionY,
+                                "modelPath"    to a.modelPath,
+                                "rotationY"    to a.rotationY
+                            )
+                        }
+                    )
+                    db.collection("users").document(userId)
+                        .collection("rooms").document(room.id)
+                        .set(data).await()
+                }
+                // Save main canvas state
+                val canvasData = mapOf(
+                    "placedRoomIds"     to _placedRoomIds.value.toList(),
+                    "mainRoomPositions" to _mainRoomPositions.value.map { (k, v) ->
+                        mapOf("id" to k, "x" to v.first, "y" to v.second)
+                    }
+                )
+                db.collection("users").document(userId)
+                    .collection("canvas").document("main")
+                    .set(canvasData).await()
+
+                _saveSuccess.value = true
+                // Reset success indicator after 2 seconds
+                kotlinx.coroutines.delay(2000)
+                _saveSuccess.value = false
+            } catch (e: Exception) {
+                // Save failed — button resets to normal
+            } finally {
+                _isSaving.value = false
+            }
+        }
     }
 
     fun refreshTotalCost() {
@@ -192,9 +259,30 @@ class AuditViewModel(
         val userId = authRepository.currentUser?.uid ?: return
         viewModelScope.launch {
             try {
+                // Explicitly convert to map so Firestore stores appliances correctly
+                val data = mapOf(
+                    "id"           to room.id,
+                    "name"         to room.name,
+                    "widthMeters"  to room.widthMeters,
+                    "heightMeters" to room.heightMeters,
+                    "appliances"   to room.appliances.map { a ->
+                        mapOf(
+                            "id"           to a.id,
+                            "name"         to a.name,
+                            "watt"         to a.watt,
+                            "hourUsage"    to a.hourUsage,
+                            "iconName"     to a.iconName,
+                            "isSwitchedOn" to a.isSwitchedOn,
+                            "positionX"    to a.positionX,
+                            "positionY"    to a.positionY,
+                            "modelPath"    to a.modelPath,
+                            "rotationY"    to a.rotationY
+                        )
+                    }
+                )
                 db.collection("users").document(userId)
                     .collection("rooms").document(room.id)
-                    .set(room).await()
+                    .set(data).await()
             } catch (e: Exception) { }
         }
     }
@@ -210,20 +298,94 @@ class AuditViewModel(
         }
     }
 
+    // Save main canvas state (placed rooms + positions) as a single document
+    private fun saveMainCanvasToFirestore() {
+        val userId = authRepository.currentUser?.uid ?: return
+        viewModelScope.launch {
+            try {
+                val data = mapOf(
+                    "placedRoomIds"    to _placedRoomIds.value.toList(),
+                    "mainRoomPositions" to _mainRoomPositions.value.map { (k, v) ->
+                        mapOf("id" to k, "x" to v.first, "y" to v.second)
+                    }
+                )
+                db.collection("users").document(userId)
+                    .collection("canvas").document("main")
+                    .set(data).await()
+            } catch (e: Exception) { }
+        }
+    }
+
     private fun loadRoomsFromFirestore() {
         val userId = authRepository.currentUser?.uid ?: return
         viewModelScope.launch {
             try {
-                val snapshot = db.collection("users").document(userId)
+                // Load rooms — fetch raw maps to avoid Firestore deserialization issues
+                // with nested Appliance list
+                val roomSnapshot = db.collection("users").document(userId)
                     .collection("rooms").get().await()
-                val loaded = snapshot.toObjects(Room::class.java)
+
+                val loaded = roomSnapshot.documents.mapNotNull { doc ->
+                    try {
+                        val data = doc.data ?: return@mapNotNull null
+                        Room(
+                            id           = doc.id,
+                            name         = data["name"] as? String ?: "",
+                            widthMeters  = (data["widthMeters"] as? Number)?.toInt() ?: 3,
+                            heightMeters = (data["heightMeters"] as? Number)?.toInt() ?: 3,
+                            appliances   = parseAppliances(data["appliances"])
+                        )
+                    } catch (e: Exception) { null }
+                }
                 _rooms.value = loaded
                 _currentRoomId.value = loaded.firstOrNull()?.id
                 syncCurrentRoomAppliances()
                 refreshTotalCost()
+
+                // Load main canvas state
+                val canvasSnapshot = db.collection("users").document(userId)
+                    .collection("canvas").document("main").get().await()
+                if (canvasSnapshot.exists()) {
+                    @Suppress("UNCHECKED_CAST")
+                    val placedList = canvasSnapshot.get("placedRoomIds") as? List<String> ?: emptyList()
+                    _placedRoomIds.value = placedList.toSet()
+
+                    @Suppress("UNCHECKED_CAST")
+                    val posList = canvasSnapshot.get("mainRoomPositions") as? List<Map<String, Any>> ?: emptyList()
+                    _mainRoomPositions.value = posList.associate { entry ->
+                        val id = entry["id"] as? String ?: ""
+                        val x  = (entry["x"] as? Number)?.toFloat() ?: 0f
+                        val y  = (entry["y"] as? Number)?.toFloat() ?: 0f
+                        id to Pair(x, y)
+                    }.filterKeys { it.isNotEmpty() }
+                }
             } catch (e: Exception) {
                 _rooms.value = emptyList()
+            } finally {
+                // Always mark loading done, even if Firestore failed
+                _isLoading.value = false
             }
+        }
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun parseAppliances(raw: Any?): List<Appliance> {
+        val list = raw as? List<Map<String, Any>> ?: return emptyList()
+        return list.mapNotNull { map ->
+            try {
+                Appliance(
+                    id          = map["id"] as? String ?: "",
+                    name        = map["name"] as? String ?: "",
+                    watt        = (map["watt"] as? Number)?.toInt() ?: 0,
+                    hourUsage   = (map["hourUsage"] as? Number)?.toFloat() ?: 0f,
+                    iconName    = map["iconName"] as? String ?: "",
+                    isSwitchedOn = map["isSwitchedOn"] as? Boolean ?: true,
+                    positionX   = (map["positionX"] as? Number)?.toFloat() ?: 0f,
+                    positionY   = (map["positionY"] as? Number)?.toFloat() ?: 0f,
+                    modelPath   = map["modelPath"] as? String ?: "",
+                    rotationY   = (map["rotationY"] as? Number)?.toFloat() ?: 0f
+                )
+            } catch (e: Exception) { null }
         }
     }
 }

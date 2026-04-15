@@ -1,7 +1,9 @@
 package com.thunderstormhan.enersave.data.repository
 
+import android.net.Uri
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
+import com.google.firebase.auth.UserProfileChangeRequest
 import kotlinx.coroutines.tasks.await
 
 class AuthRepository {
@@ -39,5 +41,22 @@ class AuthRepository {
     // Mengecek apakah user sudah terautentikasi
     fun isUserLoggedIn(): Boolean {
         return auth.currentUser != null
+    }
+
+    // FUNGSI BARU: Memperbarui metadata profil (Nama & Foto)
+    suspend fun updateProfile(displayName: String? = null, photoUri: Uri? = null): Result<Unit> {
+        val user = auth.currentUser ?: return Result.failure(Exception("User tidak terautentikasi"))
+
+        return try {
+            val profileUpdates = UserProfileChangeRequest.Builder().apply {
+                displayName?.let { setDisplayName(it) }
+                photoUri?.let { setPhotoUri(it) }
+            }.build()
+
+            user.updateProfile(profileUpdates).await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
 }

@@ -11,7 +11,9 @@ import com.thunderstormhan.enersave.ui.screens.auth.LoginScreen
 import com.thunderstormhan.enersave.ui.screens.auth.RegisterScreen
 import com.thunderstormhan.enersave.ui.screens.home.HomeScreen
 import com.thunderstormhan.enersave.ui.screens.audit.AuditScreen
+import com.thunderstormhan.enersave.ui.screens.profile.ProfileScreen // Impor UI Profil
 import com.thunderstormhan.enersave.viewmodel.AuditViewModel
+import com.thunderstormhan.enersave.viewmodel.ProfileViewModel // Impor ViewModel Profil
 
 @Composable
 fun NavGraph(
@@ -67,8 +69,19 @@ fun NavGraph(
         }
 
         composable("profile") {
-            // Placeholder untuk halaman Profil
-            Text("Halaman Profil - Statistik Hemat Energi")
+            // Inisialisasi ProfileViewModel
+            val profileViewModel: ProfileViewModel = viewModel()
+
+            // Panggil ProfileScreen dan berikan fungsi navigasi untuk logout
+            ProfileScreen(
+                viewModel = profileViewModel,
+                onLogoutSuccess = {
+                    navController.navigate("login") {
+                        // Hapus seluruh backstack (riwayat layar) agar aman
+                        popUpTo(0) { inclusive = true }
+                    }
+                }
+            )
         }
     }
 }

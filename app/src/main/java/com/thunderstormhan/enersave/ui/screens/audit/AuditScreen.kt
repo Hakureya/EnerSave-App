@@ -1,5 +1,8 @@
 package com.thunderstormhan.enersave.ui.screens.audit
 
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -20,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -43,15 +47,37 @@ fun AuditScreen(viewModel: AuditViewModel) {
 
     val currentRoom = rooms.find { it.id == currentRoomId }
 
-    val placedRoomIds by viewModel.placedRoomIds.collectAsState()
+    val placedRoomIds     by viewModel.placedRoomIds.collectAsState()
     val mainRoomPositions by viewModel.mainRoomPositions.collectAsState()
+    val isLoading         by viewModel.isLoading.collectAsState()
+
+    val context = LocalContext.current
+    val isOnline by remember {
+        derivedStateOf {
+            val cm   = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val caps = cm.getNetworkCapabilities(cm.activeNetwork)
+            caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+        }
+    }
 
     // Keep action sheet in sync with live list
     val liveActionAppliance = actionAppliance?.let { a ->
         activeList.find { it.id == a.id }
     }
 
-    // Show setup dialog if no rooms exist yet
+    // Wait for Firestore load before deciding whether to show dialog
+    if (isLoading) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                CircularProgressIndicator(color = Color(0xFF4F8EF7))
+                Spacer(modifier = Modifier.height(12.dp))
+                Text("Memuat data...", fontSize = 13.sp, color = Color.Gray)
+            }
+        }
+        return
+    }
+
+    // Show setup dialog only after load is done and rooms are truly empty
     if (rooms.isEmpty() || showAddRoom) {
         RoomSetupDialog(
             onConfirm = { config ->
@@ -70,6 +96,31 @@ fun AuditScreen(viewModel: AuditViewModel) {
                 .fillMaxSize()
                 .padding(padding)
         ) {
+
+            // --- CONNECTIVITY BANNER ---
+            if (!isOnline) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.TopCenter),
+                    color = Color(0xFFEF4444)
+                ) {
+                    Row(
+                        modifier              = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                        verticalAlignment     = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Text("⚠️", fontSize = 12.sp)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text       = "Tidak ada koneksi internet. Perubahan tidak akan tersimpan.",
+                            fontSize   = 11.sp,
+                            color      = Color.White,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            }
 
             // --- LAYER 1: Canvas ---
             Box(
